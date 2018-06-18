@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="utf-8" />
+	<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+	<link href="https://fonts.googleapis.com/css?family=Aldrich|Bungee" rel="stylesheet">
+	<style>
+		body {
+			background-color: #000;
+			color: #fff;
+			font-family: 'Aldrich', sans-serif;
+			cursor: crosshair;
+		}
+		th, td {
+			text-align: left;
+			padding-right: 12px;
+		}
+		
+		.actPerDLine {
+			stroke: #a7b5e8;
+			stroke-width: 3px;
+			fill: none;
+		}
+		.actPerDAxis line{
+			stroke: #a7b5e8; 
+			stroke-width: 0;
+			
+		}
+		.actPerDAxis path{
+			stroke: #fff;
+			stroke-opacity: 0.15;
+			
+		}
+		.actPerDAxis text{
+			fill: #fff;
+			font-family: 'Aldrich', sans-serif;
+			font-size: 14px;
+			opacity: 0.35;
+		}
+		
+		.grid line {
+			stroke: #fff;
+			stroke-opacity: 0.15;
+			shape-rendering: crispEdges;
+		}
+
+		.grid path {
+			stroke-width: 0;
+		}
+		
+		.activePerDay {
+			position: absolute;
+			top: 60px;
+			left: 0px;
+			z-index: 4;
+		}
+		.actPerDaytitle {
+			position: absolute;
+			top: 30px;
+			left: 25px;
+			opacity: 0.25;
+			font-family: 'Bungee', sans-serif;
+			font-size: 50px;
+			line-height: 50px;
+		}
+		
+		
+		.openOrders {
+			position: fixed;
+			top: 70px;
+			left: 920px;
+			font-size: 14px;
+			
+		}
+		.openOrdTitle {
+			position: fixed;
+			top: 30px;
+			left: 920px;
+			opacity: 0.25;
+			font-family: 'Bungee', sans-serif;
+			font-size: 30px;
+			line-height: 30px;
+		}
+		
+		
+		.refreshData {
+			position: absolute;
+			top: 40px;
+			left: 1190px;
+			opacity: 0.5;
+			
+		}
+		.refreshData:hover {
+			cursor: pointer;
+		}
+		
+		.notes {
+			position: fixed;
+			bottom: 2px;
+			left: 920px;
+			width: 420px;
+			font-size: 12px;
+			opacity: 0.25;
+		}
+	</style>
+</head>
+<body>
+	<div class='activePerDay'></div>
+	<div class='actPerDaytitle'>active per day</div>
+	
+	<div class='openOrders'></div>
+	<div class='openOrdTitle'>active orders</div>
+	
+	<div class='refreshData' onclick='openW()'>refresh data</div>
+
+	<div class='notes'>
+		<strong>Google Sheets Police</strong>
+		<ul>
+			<li>Do not use double quotes ("); use single instead (').
+			<li>Do not use returns (new lines) within cells.
+			<li>Be 100% consistant in date format (Mon, Aug 14, 2017). (This can be changed in the program need be.)
+			<li>Keep same header labels. (This can be changed in the program need be.)
+		</ul>
+	</div>
+	
+
+
+
+<!-- load the d3.js library -->    	
+<script src="https://d3js.org/d3.v4.min.js"></script>
+
+<script>
+
+//// Open db-process.py to refresh data ////
+function openW() {
+	window.open('http://oberl.info/cgi-bin/orders/db-process.py', '_blank', 'toolbar=no,scrollbars=yes,resizable=yes,top=20,right=20,width=450,height=600');
+}
+
+
+//// Current Open Orders ////
+var tabulate = function (data,columns) {
+var table = d3.select('.openOrders').append('table')
+var thead = table.append('thead')
+var tbody = table.append('tbody')
+
+thead.append('tr')
+  .selectAll('th')
+	.data(columns)
+	.enter()
+  .append('th')
+	.text(function (d) { return d })
+
+var rows = tbody.selectAll('tr')
+	.data(data)
+	.enter()
+  .append('tr')
+
+var cells = rows.selectAll('td')
+	.data(function(row) {
+		return columns.map(function (column) {
+			return { column: column, value: row[column] }
+	  })
+  })
+  .enter()
+.append('td')
+  .text(function (d) { return d.value })
+
+return table;
+}
+
+d3.csv('current-active.csv',function (data) {
+	var columns = ['order', 'ordered', 'inspection', 'tat']
+  tabulate(data,columns)
+})
+
+
+//// Active Orders Per Day Graph ////
+// set the dimensions and margins of the graph
+var margin = {top: 20, right: 20, bottom: 30, left: 50},
+    width = 900 - margin.left - margin.right,
+    height = 360 - margin.top - margin.bottom;
+
+// parse the date / time
+var parseTime = d3.timeParse("%a, %b %d, %Y");
+
+// set the ranges
+var x = d3.scaleTime().range([0, width]);
+var y = d3.scaleLinear().range([height, 0]);
+
+// define the line
+var valueline = d3.line()
+    .x(function(d) { return x(d.Date); })
+    .y(function(d) { return y(d.Active); });
+
+// append the svg obgect to the body of the page
+// appends a 'group' element to 'svg'
+// moves the 'group' element to the top left margin
+var svg = d3.select(".activePerDay").append("svg")
+    .attr("width", width + margin.left + margin.right)
+    .attr("height", height + margin.top + margin.bottom)
+	.append("g")
+    .attr("transform",
+          "translate(" + margin.left + "," + margin.top + ")");
+
+// gridlines in x axis function
+function make_x_gridlines() {		
+    return d3.axisBottom(x)
+        .ticks(12)
+}
+
+// gridlines in y axis function
+function make_y_gridlines() {		
+    return d3.axisLeft(y)
+        .ticks(10)
+}
+
+// Get the data
+d3.csv("active-per-day.csv", function(error, data) {
+  if (error) throw error;
+
+  // format the data
+  data.forEach(function(d) {
+      d.Date = parseTime(d.Date);
+      d.Active = +d.Active;
+  });
+
+  // Scale the range of the data
+  x.domain(d3.extent(data, function(d) { return d.Date; }));
+  y.domain([0, d3.max(data, function(d) { return d.Active; })]);
+
+// add the X gridlines
+  svg.append("g")			
+      .attr("class", "grid")
+      .attr("transform", "translate(0," + height + ")")
+      .call(make_x_gridlines()
+          .tickSize(-height)
+          .tickFormat("")
+      )
+
+// add the Y gridlines
+svg.append("g")			
+  .attr("class", "grid")
+  .call(make_y_gridlines()
+	  .tickSize(-width)
+	  .tickFormat("")
+  )
+  
+  // Add the valueline path.
+  svg.append("path")
+      .data([data])
+      .attr("class", "actPerDLine")
+      .attr("d", valueline);
+
+  // Add the X Axis
+  svg.append("g")
+      .attr("transform", "translate(0," + height + ")")
+	  .attr("class", "actPerDAxis")
+      .call(d3.axisBottom(x));
+
+  // Add the Y Axis
+  svg.append("g")
+    .attr("class", "actPerDAxis")
+    .call(d3.axisLeft(y));
+
+});
+
+</script>
+
+
+</body>

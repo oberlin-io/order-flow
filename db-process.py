@@ -4,13 +4,17 @@
 print '''Content-type: text/html
 
 <html>
-<head>
+'''
+
+print '''<head>
+	<title>DB Processing</title>
 	<link href="https://fonts.googleapis.com/css?family=Aldrich|Bungee" rel="stylesheet">
 	<style>
 		body {
 			background-color: #000;
 			color: #fff;
 			font-family: 'Aldrich', sans-serif;
+			opacity: .25;
 		}
 		h1 {
 			font-family: 'Bungee', sans-serif;
@@ -38,10 +42,10 @@ from urllib2 import build_opener, HTTPCookieProcessor
 opener = build_opener(HTTPCookieProcessor(CookieJar()))
 
 # OAS Order Tracking
-#resp = opener.open('https://docs.google.com/spreadsheet/ccc?key=1mL8_Hew8NkZevZvi-MdASqARb-q-MkJUE9zSQD7BcRc&output=csv')
+resp = opener.open('https://docs.google.com/spreadsheet/ccc?key=1mL8_Hew8NkZevZvi-MdASqARb-q-MkJUE9zSQD7BcRc&output=csv')
 
 # Copy of Order Tracking
-resp = opener.open('https://docs.google.com/spreadsheet/ccc?key=1xLFwiAKP8GB45swIG2L1doMUPlCAbYpdLOvN09Oc-40&output=csv')
+#resp = opener.open('https://docs.google.com/spreadsheet/ccc?key=1xLFwiAKP8GB45swIG2L1doMUPlCAbYpdLOvN09Oc-40&output=csv')
 
 data = resp.read()
 
@@ -75,6 +79,23 @@ print '<p>Parsed CSV data to 2D array.'
 
 ### SCRUB DATA ###
 
+# Remove canceled records
+pack_dx = table[0].index('Packet')
+rem = 0
+
+for r in table[1:]:	
+
+	if r[pack_dx] == 'Canc':
+	
+		table.remove(r)
+		rem += 1
+		
+	else:
+		pass
+
+print "<p>Orders marked as 'Canc' removed: %s" % rem
+
+
 # Remove records of orders done by other appraisers.
 appr_dx = table[0].index('Appr')
 rem = 0
@@ -88,7 +109,12 @@ for r in table[1:]:
 	
 			table.remove(r)
 			rem += 1
-
+		
+		else:
+			pass
+	else:
+		pass
+		
 print '<p>Orders assigned to other appraisers removed: %s' % rem
 
 
@@ -96,7 +122,7 @@ print '<p>Orders assigned to other appraisers removed: %s' % rem
 
 ### CALCULATE ORDERS ACTIVE PER DAY ###
 
-print '<h2>Calculating Orders Per Day</h2>'
+print '<br><h3>Calculating Orders Per Day</h3>'
 
 # Additional scrub, removing orders without Ordered field
 ord_dx = table[0].index('Ordered')
@@ -209,6 +235,7 @@ today = dt.datetime.today()
 
 print '<p>Today\'s date: %s' % today
 
+# Should 1 day be added (or even +2?). Run db-process and check final entry on active-per-day.csv. It should be today's date.
 d_range = (today - earliest).days
 
 print '<p>Range of days processing: %s' % d_range
@@ -287,6 +314,21 @@ for day in range(d_range):
 	per_d.append([ref_dat, count])
 
 
+# Get average Active, and splice out dates until reach average
+# (because the first few days do not count orders from before start date, showing 1 or 2 active, which is inaccurate)
+sum = 0.0
+for r in per_d:
+	sum += r[1]
+
+avg = sum / float(len(per_d))
+
+print '<p>Average active per day: %s' % avg
+
+for r in per_d:
+	if r[1] >= avg:
+		per_d = per_d[per_d.index(r):]
+		break
+
 # Insert header row
 per_d.insert(0,['Date','Active'])
 
@@ -296,12 +338,100 @@ per_d.insert(0,['Date','Active'])
 #rg.csv(per_d, '/home1/joberlin/public_html/active-per-day')
 
 # For testing local
-rg.csv(per_d, 'C:/Users/John/Desktop/in-the-works/orders/orders/orders/active-per-day')
+rg.csv(per_d, 'C:/Users/John/Desktop/master-nonmedia/projects/github-mirror/push/orders/orders/active-per-day')
 
 print '<p>active-per-day.csv updated.'
 
 
 
 
-print '''</body>
+### CURRENTLY ACTIVE ORDERS ###
+
+print '<br><h3> Calculating Current Active Orders</h3>'
+
+active = []
+
+com_dx = table[0].index('Completed')
+file_dx = table[0].index('File')
+insp_dx = table[0].index('Insp')
+tat_dx = table[0].index('TAT/Wk')
+
+for r in table:
+
+	if r[com_dx] == '':
+	
+		# Add auditor URL http://ddti.starkcountyohio.gov/Results.aspx?SearchType=QuickSearch&Criteria1=2307+wale
+		# Get file, regex digits separate from letters
+	
+		active.append( [r[file_dx], r[ord_dx], r[insp_dx], r[tat_dx],] )
+
+active.insert(0, ['order', 'ordered', 'inspection', 'tat'] )
+		
+# Write ouput to CSV file
+# For online
+#rg.csv(active, '/home1/joberlin/public_html/current-active')
+
+# For testing local
+rg.csv(active, 'C:/Users/John/Desktop/master-nonmedia/projects/github-mirror/push/orders/orders/current-active')
+
+print '<p>current-active.csv updated.'
+
+
+
+
+### TIME INVOLVED (X) FEE (Y) PLOT WITH LABELS 'FORM, CLIENT' ###
+
+print '<br><h3>Time-Fee Calculation Per Form and Client</h3>'
+
+amnt_dx = table[0].index('Amount')
+fee_dx = table[0].index('Fee') # amount / fee = time spent on order
+form_dx = table[0].index('Form')
+client_dx = table[0].index('Client')
+
+time_fee = []
+empty = 0
+
+for r in table[1:]:
+	
+	try:
+	
+		t = float(r[amnt_dx]) / float(r[fee_dx]) # time involved in order
+		time_fee.append( [r[form_dx], r[client_dx], t, r[fee_dx],] )
+		
+	except ValueError:
+	
+		if r[amnt_dx] == '':
+		
+			empty += 1
+			
+		else:
+		
+			pass
+	
+
+
+
+	
+print '<p>Orders not included in calculation due to empty Amount field: %s' % empty
+
+print '<p>Orders included in time-fee calculation: %d' % len(time_fee)
+
+time_fee.insert(0, ['form','client','time','fee'])
+
+#for r in time_fee:
+
+	
+
+
+# Write ouput to CSV file
+# For online
+#rg.csv(active, '/home1/joberlin/public_html/current-active')
+
+
+
+
+
+
+print '''<h2>Close this window and refresh Orders Dashboard.</h2>
+</body>
 </html>'''
